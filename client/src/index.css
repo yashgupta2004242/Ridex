@@ -1,0 +1,141 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink: #11201a;
+  --paper: #f4f6f2;
+  --surface: #ffffff;
+  --milestone: #1f6f4a;
+  --kerb: #d7dcd3;
+  --signal: #e4572e;
+  --night: #0b1512;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.ridex-map .maplibregl-canvas {
+  outline: none;
+}
+
+.ridex-pin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateY(4px);
+}
+
+.ridex-pin-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(17, 32, 26, 0.35);
+}
+
+.ridex-pin-label {
+  margin-top: 4px;
+  max-width: 140px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fff;
+  color: #11201a;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(17, 32, 26, 0.12);
+}
+
+.ridex-pin-you .ridex-pin-dot {
+  background: #3d8bff;
+}
+.ridex-pin-pickup .ridex-pin-dot {
+  background: #11201a;
+}
+.ridex-pin-drop .ridex-pin-dot {
+  background: #1f6f4a;
+}
+.ridex-pin-driver .ridex-pin-dot {
+  background: #e4572e;
+}
+
+.anim-rise {
+  animation: rise 700ms ease-out both;
+}
+
+.road-dash {
+  animation: dash 1.4s linear infinite;
+}
+
+.car-glide {
+  animation: glide 3s ease-in-out infinite;
+}
+
+.km-stone {
+  animation: rise 900ms 200ms ease-out both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -50;
+  }
+}
+
+@keyframes glide {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+a {
+  color: inherit;
+}
+
+button,
+a {
+  outline-offset: 3px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--milestone);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

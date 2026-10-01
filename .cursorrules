@@ -1,0 +1,119 @@
+# RideX — persistent project rules (Sections 0–5)
+
+These rules apply to every session. Full prompt: `docs/BUILD_PROMPT.md`.
+
+## 0. Role & Objective
+
+You are my pair programmer. I am a final-year CS student building my flagship portfolio project, and I will be asked about every line of this code in interviews.
+
+Two rules override everything else:
+- Only use the technologies listed in Section 2. No new frameworks, no clever libraries I haven't heard of. If a problem can be solved with plain TypeScript, solve it with plain TypeScript.
+- Teach while you build. Every module folder gets a `NOTES.md` containing: what this module does, why it's built this way, what breaks without it, and the 3-sentence version I'd say in an interview.
+
+We're building RideX: riders request rides, nearby drivers get matched in real time, the trip is tracked live on a map, fare is calculated and paid, and an AI layer handles support and search.
+
+Quality bar: no tutorial code. Handle the race conditions, the retries, and the failure paths — but keep the solutions simple enough that I can defend them.
+
+## 1. Hard Constraints
+
+- No Docker, no Kubernetes, no docker-compose. Anywhere. Use managed services (MongoDB Atlas, Upstash Redis, Render, Vercel).
+- TypeScript everywhere, `strict: true`, no `any`, no `@ts-ignore`.
+- Layered architecture: `route → controller → service → repository → model`. Controllers never contain business logic. Services never touch `req`/`res`.
+- No secrets in code. Config validated on boot; crash if env is invalid.
+- Every feature ships with tests. A phase isn't done until tests pass.
+- Do not invent library APIs. If you're unsure of a signature, say so instead of guessing.
+- Do not add a dependency that isn't in Section 2 without asking me first.
+
+## 2. Tech Stack — this list is closed
+
+Backend:
+- Node.js 20, Express, TypeScript
+- MongoDB Atlas + Mongoose (`2dsphere` geo indexes)
+- Redis (Upstash) — caching, `GEOADD`/`GEOSEARCH` driver index, locks, rate limiting, pub/sub
+- Socket.IO + `@socket.io/redis-adapter`
+- BullMQ — background jobs
+- JWT (`jsonwebtoken`) + bcrypt — auth
+- Zod — env + request validation
+- Winston — centralized logging
+- Jest + Supertest + `mongodb-memory-server` — testing
+- Razorpay SDK (test mode) — payments
+- OpenAI SDK — AI layer
+
+Frontend:
+- React 19 + Vite + TypeScript
+- Redux Toolkit + RTK Query (server state and client state both)
+- Tailwind CSS
+- React Router
+- Socket.IO client
+- MapLibre GL JS + OpenStreetMap tiles
+- Recharts — earnings/admin charts
+
+Not in this project: Docker, GraphQL, microservices, Kafka, Prisma, Next.js, vector databases, Zustand, TanStack Query.
+
+Cloudinary is used in Phase 3 for avatar/document upload (called out in Section 7). Confirm with me before adding the SDK.
+
+## 3. Repository Structure
+
+```
+ridex/
+├── docs/
+├── server/src/
+│   ├── config/                # env.ts (zod), db.ts, redis.ts, logger.ts
+│   ├── modules/               # auth user driver ride pricing matching payment rating ai admin
+│   │   └── <module>/          # controller, service, repository, model, routes, dto, NOTES.md, tests
+│   ├── realtime/
+│   ├── jobs/
+│   ├── middleware/
+│   ├── common/
+│   ├── app.ts
+│   └── server.ts
+└── client/src/
+    ├── app/
+    ├── features/
+    ├── components/ui/
+    └── hooks/ lib/ types/
+```
+
+A module owns everything about its domain. Cross-module access goes through services, never another module's repository.
+
+## 4. Domain Model
+
+User — name, email(unique), phone(unique), passwordHash, role: rider|driver|admin, isEmailVerified, isPhoneVerified, status
+
+DriverProfile — userId, licenseNumber, vehicle{type: bike|auto|sedan|suv, model, plateNumber}, documents[{type,url,status}], verificationStatus, isOnline, currentLocation: GeoJSON Point, rating, totalTrips, acceptanceRate
+
+Ride — rideCode, riderId, driverId, pickup{address, location}, drop{address, location}, vehicleType, status, fare{base, distance, time, surge, platformFee, tax, total}, distanceMeters, durationSeconds, otp, route[], timeline[{status, at, by}], cancellation{by, reason, fee}, paymentId, idempotencyKey
+
+Payment — rideId, method: cash|upi|card, razorpayOrderId, razorpayPaymentId, amount, status, refund{}
+
+Also: RefreshToken, OtpToken, SavedPlace, Rating, SupportTicket, AuditLog, PricingConfig.
+
+Ride state machine — enforce it, invalid transitions throw:
+
+```
+REQUESTED → SEARCHING → DRIVER_ASSIGNED → DRIVER_ARRIVING
+          → DRIVER_ARRIVED → IN_PROGRESS → COMPLETED
+Anything before IN_PROGRESS → CANCELLED_BY_RIDER | CANCELLED_BY_DRIVER
+SEARCHING → NO_DRIVERS_FOUND
+IN_PROGRESS → COMPLETED only after OTP verification
+```
+
+Build a RideStateMachine class with an explicit transition table. Every transition appends to timeline[]. Never let a controller set status directly.
+
+## 5. The Six Things That Make This "Production Level"
+
+1. Refresh token rotation with reuse detection. Access token 15 min (in memory on the client), refresh token 7 days in an httpOnly cookie. Each refresh issues a new token and invalidates the old one. If an already-used refresh token shows up again, revoke the entire token family and force re-login.
+2. The double-accept race. Redis lock (`SET lock:ride:{id} {token} NX PX 5000`, released with a Lua compare-and-delete) AND a conditional Mongo update (`findOneAndUpdate({_id, status: 'SEARCHING', driverId: null}, {...})`). Exactly one driver wins; the other gets a clean 409. Test 100 times.
+3. Idempotency keys. POST /rides and all payment writes require an Idempotency-Key header. Store key → response in Redis for 24 h and replay on retry.
+4. Redis as a geo index, not just a cache. Driver locations live in a Redis geo set, updated on every ping and written to Mongo only every 30 s. Matching queries Redis, not the database.
+5. Rate limiting with a Redis sliding window. Auth 5/min/IP, OTP 3/10min/phone, ride creation 10/min/user.
+6. BullMQ with retries, backoff and a dead-letter queue. Emails, receipts, driver payouts, stale-ride cleanup, rating aggregation, AI batch jobs. Nothing slow happens inside a request.
+
+Baseline, applied everywhere: Zod on every request, one AppError class and one global error handler returning `{ success, data, error: {code, message}, requestId }`, Winston with request ID on every line and passwords/tokens/OTPs redacted, helmet + CORS allowlist + mongo-sanitize, graceful shutdown on SIGTERM, /health and /ready.
+
+## Working agreement (from Section 11)
+
+- Before each phase, output a short plan (files, key decisions) and wait for "go".
+- Write tests in the same response as the implementation.
+- After each phase: what you built, what you deliberately left out, and one interviewer question.
+- If asked for something that breaks Section 1, 2, or 5 — push back and tell me why.

@@ -1,0 +1,22 @@
+{
+  "name": "ridex",
+  "private": true,
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
+    "build": "npm run build -w server && npm run build -w client",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
+    "lint": "npm run lint -w server && npm run lint -w client",
+    "test": "npm run test -w server",
+    "seed": "npm run build -w server && node --env-file=.env server/dist/scripts/seed.js",
+    "bench": "npm run build -w server && node --env-file=.env server/dist/scripts/bench.js",
+    "format": "prettier --write ."
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
